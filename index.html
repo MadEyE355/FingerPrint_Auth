@@ -11,6 +11,7 @@
             --fg: #111111;
             --muted: #8a8a8a;
             --line: #dcdcdc;
+            --error: #c0392b;
         }
 
         @media (prefers-color-scheme: dark) {
@@ -19,6 +20,7 @@
                 --fg: #f2f2f2;
                 --muted: #8a8a8a;
                 --line: #333333;
+                --error: #ff6b5b;
             }
         }
 
@@ -91,18 +93,41 @@
             cursor: pointer;
         }
 
+        .auth .enter:disabled {
+            opacity: 0.5;
+            cursor: default;
+        }
+
         .auth .enter:focus-visible,
         .switch button:focus-visible {
             outline: 2px solid var(--fg);
             outline-offset: 2px;
         }
+
+        .message {
+            min-height: 1.25em;
+            margin: 12px 0 0;
+            font-size: 14px;
+            color: var(--muted);
+        }
+
+        .message.error {
+            color: var(--error);
+        }
+
+        .greeting {
+            font-size: 24px;
+            margin: 0;
+        }
+
+        [hidden] {
+            display: none !important;
+        }
     </style>
 </head>
 
 <body>
-    <!-- <pre id="out">Collecting...</pre> -->
-
-    <div class="auth">
+    <div class="auth" id="auth">
         <div class="switch" role="tablist">
             <button type="button" id="tab-login" role="tab" aria-selected="true">Login</button>
             <button type="button" id="tab-register" role="tab" aria-selected="false">Register</button>
@@ -110,65 +135,88 @@
 
         <input id="username" type="text" placeholder="Username" autocomplete="username" autofocus>
         <button type="button" id="enter" class="enter">Enter</button>
+        <p id="message" class="message" role="status"></p>
     </div>
 
+    <p id="greeting" class="greeting" hidden></p>
+
     <script>
+        // ---------- UI ----------
+        let mode = "login";
 
-        document.querySelector('#enter').addEventListener('click', () => {
-            let login_tab = document.querySelector('#tab-login')
-            let register_tab = document.querySelector('#tab-register')
+        const tabs = {
+            login: document.getElementById("tab-login"),
+            register: document.getElementById("tab-register")
+        };
+        const usernameInput = document.getElementById("username");
+        const enterBtn = document.getElementById("enter");
+        const messageEl = document.getElementById("message");
 
-            if (login_tab.ariaSelected == 'true') {
-                send_login()
+        function setMode(next) {
+            mode = next;
+            for (const [name, el] of Object.entries(tabs)) {
+                el.setAttribute("aria-selected", String(name === mode));
             }
-            else if (register_tab.ariaSelected == 'true') {
-                send_register()
-            }
-        })
-
-        async function send_login() {
-            const username = document.getElementById("username").value.trim();
-            if (!username) return;
-
-            const { combined } = await collect(); // your fingerprint hash
-
-            const response = await fetch("/login", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ username, fingerprint: combined })
-            });
-
-            const data = await response.json();
-            console.log(data);
+            showMessage("");
         }
 
-        async function send_register() {
-            const username = document.getElementById("username").value.trim();
-            if (!username) return;
-
-            const { combined } = await collect(); // your fingerprint hash
-
-            const response = await fetch("/register", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ username, fingerprint: combined })
-            });
-
-            const data = await response.json();
-            console.log(data);
+        function showMessage(text, isError = false) {
+            messageEl.textContent = text;
+            messageEl.classList.toggle("error", isError);
         }
 
+        tabs.login.addEventListener("click", () => setMode("login"));
+        tabs.register.addEventListener("click", () => setMode("register"));
 
+        enterBtn.addEventListener("click", submit);
+        usernameInput.addEventListener("keydown", e => {
+            if (e.key === "Enter") submit();
+        });
 
+        // ---------- Auth ----------
+        async function submit() {
+            const username = usernameInput.value.trim();
+            if (!username) {
+                showMessage("Enter a username", true);
+                return;
+            }
 
+            enterBtn.disabled = true;
+            showMessage("");
 
+            try {
+                const { combined } = await collect();
 
+                const response = await fetch("/" + mode, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ username, fingerprint: combined })
+                });
+                const data = await response.json();
 
+                if (!response.ok) {
+                    showMessage(data.error || "Something went wrong", true);
+                    return;
+                }
 
+                if (mode === "login") {
+                    document.getElementById("auth").hidden = true;
+                    const greeting = document.getElementById("greeting");
+                    greeting.textContent = "Hi " + data.username;
+                    greeting.hidden = false;
+                } else {
+                    setMode("login");
+                    showMessage("Registered. You can log in now.");
+                }
+            } catch (err) {
+                console.error(err);
+                showMessage("Could not reach the server", true);
+            } finally {
+                enterBtn.disabled = false;
+            }
+        }
 
-
-
-        // fingerpriting code
+        // ---------- Fingerprinting code ----------
 
         // SHA-256 -> hex string (needs HTTPS or localhost)
         async function sha256(text) {
@@ -227,41 +275,6 @@
 
             return { raw, components, combined };
         }
-
-        collect().then(result => {
-            console.log(result);
-            document.getElementById("out").textContent = JSON.stringify(result, null, 2);
-        });
-    </script>
-
-    <script>
-        // Login / Register switch (UI only)
-        let mode = "login";
-        const tabs = {
-            login: document.getElementById("tab-login"),
-            register: document.getElementById("tab-register")
-        };
-
-        function setMode(next) {
-            mode = next;
-            for (const [name, el] of Object.entries(tabs)) {
-                el.setAttribute("aria-selected", String(name === mode));
-            }
-        }
-
-        tabs.login.addEventListener("click", () => setMode("login"));
-        tabs.register.addEventListener("click", () => setMode("register"));
-
-        function submit() {
-            const username = document.getElementById("username").value.trim();
-            if (!username) return;
-            console.log({ mode, username }); // hook your backend call here
-        }
-
-        document.getElementById("enter").addEventListener("click", submit);
-        document.getElementById("username").addEventListener("keydown", e => {
-            if (e.key === "Enter") submit();
-        });
     </script>
 </body>
 
