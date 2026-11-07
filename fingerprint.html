@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Fingerprint test</title>
+</head>
+<body>
+  <pre id="out">Collecting...</pre>
+  
+
+  <script>
+    // SHA-256 -> hex string (needs HTTPS or localhost)
+    async function sha256(text) {
+      const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+      return [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, "0")).join("");
+    }
+
+    // Audio fingerprint: returns the raw sum (keep it, useful for fuzzy matching)
+    async function audioFingerprint() {
+      const ctx = new OfflineAudioContext(1, 44100, 44100);
+      const osc = ctx.createOscillator();
+      osc.type = "triangle";
+      osc.frequency.value = 10000;
+
+      const comp = ctx.createDynamicsCompressor();
+      comp.threshold.value = -50;
+      comp.knee.value = 40;
+      comp.ratio.value = 12;
+      comp.attack.value = 0;
+      comp.release.value = 0.25;
+
+      osc.connect(comp);
+      comp.connect(ctx.destination);
+      osc.start(0);
+
+      const buffer = await ctx.startRendering();
+      const samples = buffer.getChannelData(0).slice(4500, 5000);
+      return samples.reduce((sum, v) => sum + Math.abs(v), 0);
+    }
+
+    async function collect() {
+      // 1. Raw values
+      const basic = {
+        platform: navigator.platform,
+        hardwareConcurrency: navigator.hardwareConcurrency,
+        deviceMemory: navigator.deviceMemory ?? null, // Chromium only
+        screenWidth: screen.width,
+        screenHeight: screen.height,
+        colorDepth: screen.colorDepth,
+        maxTouchPoints: navigator.maxTouchPoints
+      };
+
+      let audioRaw = null;
+      try { audioRaw = await audioFingerprint(); } catch (e) { audioRaw = "error"; }
+
+      const raw = { ...basic, audio: audioRaw };
+
+      // 2. Hash each component separately (for similarity matching)
+      const components = {};
+      for (const [key, value] of Object.entries(raw)) {
+        components[key] = await sha256(String(value));
+      }
+
+      // 3. One combined hash of everything
+      const combined = await sha256(JSON.stringify(raw));
+
+      return { raw, components, combined };
+    }
+
+    collect().then(result => {
+      console.log(result);
+      document.getElementById("out").textContent = JSON.stringify(result, null, 2);
+    });
+  </script>
+</body>
+</html>

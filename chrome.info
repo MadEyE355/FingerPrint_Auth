@@ -1,0 +1,23 @@
+{
+  "raw": {
+    "platform": "Win32",
+    "hardwareConcurrency": 16,
+    "deviceMemory": 16,
+    "screenWidth": 1397,
+    "screenHeight": 786,
+    "colorDepth": 24,
+    "maxTouchPoints": 0,
+    "audio": 124.04347776696522
+  },
+  "components": {
+    "platform": "72589e877150c83b3a7bbc72e38aecde0618cc554898f0c084477fda92240061",
+    "hardwareConcurrency": "b17ef6d19c7a5b1ee83b907c595526dcb1eb06db8227d650d5dda0a9f4ce8cd9",
+    "deviceMemory": "b17ef6d19c7a5b1ee83b907c595526dcb1eb06db8227d650d5dda0a9f4ce8cd9",
+    "screenWidth": "67b75961400e53222b0107d3e6c3b223d6de41c6875c202704ca580a7fece038",
+    "screenHeight": "87c7965a1cc6c11a653b210aaef95e381b95afddf1781da3fa5b2d4b1d3097bf",
+    "colorDepth": "c2356069e9d1e79ca924378153cfbbfb4d4416b1f99d41a2940bfdb66c5319db",
+    "maxTouchPoints": "5feceb66ffc86f38d952786c6d696c79c2dbc239dd4e91b46729d73a27fb57e9",
+    "audio": "c40eda39b983616b10c8f993187109ac7e1988133371c5b8b86f11f7413a188f"
+  },
+  "combined": "8b92a049f42bbbcd0cbd7ebd9b1bd17b2c9e82fc1d548a937c2f69aaffa3134c"
+}

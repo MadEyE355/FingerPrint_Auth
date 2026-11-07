@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Fingerprint test</title>
+    <style>
+        :root {
+            --bg: #ffffff;
+            --fg: #111111;
+            --muted: #8a8a8a;
+            --line: #dcdcdc;
+        }
+
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --bg: #141414;
+                --fg: #f2f2f2;
+                --muted: #8a8a8a;
+                --line: #333333;
+            }
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: var(--bg);
+            color: var(--fg);
+            font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+        }
+
+        .auth {
+            width: 100%;
+            max-width: 280px;
+            padding: 0 16px;
+        }
+
+        .switch {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 24px;
+        }
+
+        .switch button {
+            background: none;
+            border: 0;
+            border-bottom: 2px solid transparent;
+            padding: 0 0 6px;
+            font: inherit;
+            color: var(--muted);
+            cursor: pointer;
+        }
+
+        .switch button[aria-selected="true"] {
+            color: var(--fg);
+            border-bottom-color: var(--fg);
+        }
+
+        .auth input {
+            width: 100%;
+            padding: 10px 12px;
+            margin-bottom: 12px;
+            font: inherit;
+            color: var(--fg);
+            background: transparent;
+            border: 1px solid var(--line);
+            border-radius: 6px;
+            outline: none;
+        }
+
+        .auth input:focus {
+            border-color: var(--fg);
+        }
+
+        .auth .enter {
+            width: 100%;
+            padding: 10px 12px;
+            font: inherit;
+            color: var(--bg);
+            background: var(--fg);
+            border: 0;
+            border-radius: 6px;
+            cursor: pointer;
+        }
+
+        .auth .enter:focus-visible,
+        .switch button:focus-visible {
+            outline: 2px solid var(--fg);
+            outline-offset: 2px;
+        }
+    </style>
+</head>
+
+<body>
+    <!-- <pre id="out">Collecting...</pre> -->
+
+    <div class="auth">
+        <div class="switch" role="tablist">
+            <button type="button" id="tab-login" role="tab" aria-selected="true">Login</button>
+            <button type="button" id="tab-register" role="tab" aria-selected="false">Register</button>
+        </div>
+
+        <input id="username" type="text" placeholder="Username" autocomplete="username" autofocus>
+        <button type="button" id="enter" class="enter">Enter</button>
+    </div>
+
+    <script>
+
+        document.querySelector('#enter').addEventListener('click', () => {
+            let login_tab = document.querySelector('#tab-login')
+            let register_tab = document.querySelector('#tab-register')
+
+            if (login_tab.ariaSelected == 'true') {
+                send_login()
+            }
+            else if (register_tab.ariaSelected == 'true') {
+                send_register()
+            }
+        })
+
+        async function send_login() {
+            const username = document.getElementById("username").value.trim();
+            if (!username) return;
+
+            const { combined } = await collect(); // your fingerprint hash
+
+            const response = await fetch("/login", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ username, fingerprint: combined })
+            });
+
+            const data = await response.json();
+            console.log(data);
+        }
+
+        async function send_register() {
+            const username = document.getElementById("username").value.trim();
+            if (!username) return;
+
+            const { combined } = await collect(); // your fingerprint hash
+
+            const response = await fetch("/register", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ username, fingerprint: combined })
+            });
+
+            const data = await response.json();
+            console.log(data);
+        }
+
+
+
+
+
+
+
+
+
+
+
+        // fingerpriting code
+
+        // SHA-256 -> hex string (needs HTTPS or localhost)
+        async function sha256(text) {
+            const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+            return [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, "0")).join("");
+        }
+
+        // Audio fingerprint: returns the raw sum (keep it, useful for fuzzy matching)
+        async function audioFingerprint() {
+            const ctx = new OfflineAudioContext(1, 44100, 44100);
+            const osc = ctx.createOscillator();
+            osc.type = "triangle";
+            osc.frequency.value = 10000;
+
+            const comp = ctx.createDynamicsCompressor();
+            comp.threshold.value = -50;
+            comp.knee.value = 40;
+            comp.ratio.value = 12;
+            comp.attack.value = 0;
+            comp.release.value = 0.25;
+
+            osc.connect(comp);
+            comp.connect(ctx.destination);
+            osc.start(0);
+
+            const buffer = await ctx.startRendering();
+            const samples = buffer.getChannelData(0).slice(4500, 5000);
+            return samples.reduce((sum, v) => sum + Math.abs(v), 0);
+        }
+
+        async function collect() {
+            // 1. Raw values
+            const basic = {
+                platform: navigator.platform,
+                hardwareConcurrency: navigator.hardwareConcurrency,
+                deviceMemory: navigator.deviceMemory ?? null, // Chromium only
+                screenWidth: screen.width,
+                screenHeight: screen.height,
+                colorDepth: screen.colorDepth,
+                maxTouchPoints: navigator.maxTouchPoints
+            };
+
+            let audioRaw = null;
+            try { audioRaw = await audioFingerprint(); } catch (e) { audioRaw = "error"; }
+
+            const raw = { ...basic, audio: audioRaw };
+
+            // 2. Hash each component separately (for similarity matching)
+            const components = {};
+            for (const [key, value] of Object.entries(raw)) {
+                components[key] = await sha256(String(value));
+            }
+
+            // 3. One combined hash of everything
+            const combined = await sha256(JSON.stringify(raw));
+
+            return { raw, components, combined };
+        }
+
+        collect().then(result => {
+            console.log(result);
+            document.getElementById("out").textContent = JSON.stringify(result, null, 2);
+        });
+    </script>
+
+    <script>
+        // Login / Register switch (UI only)
+        let mode = "login";
+        const tabs = {
+            login: document.getElementById("tab-login"),
+            register: document.getElementById("tab-register")
+        };
+
+        function setMode(next) {
+            mode = next;
+            for (const [name, el] of Object.entries(tabs)) {
+                el.setAttribute("aria-selected", String(name === mode));
+            }
+        }
+
+        tabs.login.addEventListener("click", () => setMode("login"));
+        tabs.register.addEventListener("click", () => setMode("register"));
+
+        function submit() {
+            const username = document.getElementById("username").value.trim();
+            if (!username) return;
+            console.log({ mode, username }); // hook your backend call here
+        }
+
+        document.getElementById("enter").addEventListener("click", submit);
+        document.getElementById("username").addEventListener("keydown", e => {
+            if (e.key === "Enter") submit();
+        });
+    </script>
+</body>
+
+</html>
